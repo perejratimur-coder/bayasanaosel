@@ -71,6 +71,28 @@
     .tiny { font-size:.78rem; color:#a99bb4; margin-top:22px; }
     .heart { display:inline-block; color:#f5a9c9; animation:beat 1.3s ease-in-out infinite; }
     @keyframes beat { 50% { transform:scale(1.25); } }
+    
+    .final-stage { position:relative; }
+    .zoom-words {
+      position:absolute; inset:0; display:grid; place-items:center; z-index:2;
+      font-weight:800; letter-spacing:.04em; pointer-events:none; opacity:0;
+      font-size:clamp(2.6rem,11vw,6.5rem); color:#f6c8dd;
+      text-shadow:0 0 45px #e6a8d466;
+    }
+    .zoom-words.play { animation:zoomAway 3s ease-in-out forwards; }
+    @keyframes zoomAway {
+      0% { opacity:0; transform:scale(.5); filter:blur(4px); }
+      22% { opacity:1; transform:scale(.85); filter:blur(0); }
+      65% { opacity:1; }
+      100% { opacity:0; transform:scale(7); filter:blur(12px); }
+    }
+    #portrait-canvas { display:block; width:min(100%,430px); margin:8px auto; opacity:0; transition:opacity .9s ease; }
+    #portrait-canvas.show { opacity:1; }
+    .reveal-caption { opacity:0; transform:translateY(12px); transition:opacity .9s ease, transform .9s ease; }
+    .reveal-caption.show { opacity:1; transform:none; }
+    .final-actions { opacity:0; transition:opacity .9s ease; }
+    .final-actions.show { opacity:1; }
+    .apology-line { margin:38px 0 4px; }
     @media(max-width:480px) {
       .screen { padding:26px 18px; }
       .password-wrap { flex-direction:column; }
@@ -137,30 +159,123 @@
     <section class="screen" id="screen-apology">
       <div class="content">
         <div class="eyebrow">и ещё кое-что важное</div>
-        <div class="handwritten">я без негатива,<br>извини если задело tn</div>
         <p>Надеюсь, ты поняла, что всё это — просто шутка и маленький знак внимания.</p>
-        <div style="font-size:1.5rem;margin:24px 0"><span class="heart">♥</span></div>
         <button class="btn" data-next="screen-final">Последняя страничка</button>
+        <div class="handwritten apology-line">я без негатива,<br>извини если задело тн</div>
       </div>
     </section>
 
     <section class="screen" id="screen-final">
-      <div class="content">
+      <div class="content final-stage">
         <div class="eyebrow">только для тебя</div>
-        <h2>Баясана <span class="heart">♥</span></h2>
-        <img class="final-photo" src="assets/final-photo.jpg" alt="Фотография для финальной страницы">
-        <div class="final-line">ди нах осел — чисто для тебя</div>
-        <p class="tiny">конец письма. но не конец хорошего настроения ✨</p>
-        <button class="btn secondary" id="restart" style="margin-top:14px">Перечитать сначала</button>
+        <div class="zoom-words" id="zoom-words"><span>ди нах осел</span></div>
+        <canvas id="portrait-canvas" aria-label="Портрет из слов ди нах осел"></canvas>
+        <div class="final-line reveal-caption" id="final-caption">ди нах осел — чисто для тебя</div>
+        <div class="final-actions" id="final-actions">
+          <p class="tiny">конец письма. но не конец хорошего настроения ✨</p>
+          <button class="btn secondary" id="restart" style="margin-top:14px">Перечитать сначала</button>
+        </div>
       </div>
     </section>
   </main>
+
 
   <script>
     const screens = [...document.querySelectorAll('.screen')];
     function showScreen(id) {
       screens.forEach(screen => screen.classList.toggle('active', screen.id === id));
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (id === 'screen-final') setTimeout(startFinal, 400);
+    }
+
+    /* ---- финал: слова отдаляются, портрет из слов появляется ---- */
+    const zoomEl = document.getElementById('zoom-words');
+    const portraitCanvas = document.getElementById('portrait-canvas');
+    const portraitCtx = portraitCanvas.getContext('2d');
+    const finalCaption = document.getElementById('final-caption');
+    const finalActions = document.getElementById('final-actions');
+    let finalPlayed = false;
+
+    function startFinal() {
+      if (finalPlayed) return;
+      finalPlayed = true;
+      zoomEl.classList.add('play');
+      const img = new Image();
+      img.src = 'assets/final-photo.jpg';
+      img.onload = () => {
+        const words = ['ди', 'нах', 'осел'];
+        const cols = 40, cellW = 16, cellH = 14;
+        const aspect = img.height / img.width;
+        const rows = Math.max(20, Math.round(cols * aspect * cellW / cellH));
+        const cssW = cols * cellW, cssH = rows * cellH;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        portraitCanvas.width = cssW * dpr;
+        portraitCanvas.height = cssH * dpr;
+        portraitCanvas.style.aspectRatio = cssW + ' / ' + cssH;
+        portraitCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // миниатюра для сэмплирования цветов
+        const off = document.createElement('canvas');
+        off.width = cols; off.height = rows;
+        const octx = off.getContext('2d');
+        const scale = Math.max(cols / img.width, rows / img.height);
+        const dw = img.width * scale, dh = img.height * scale;
+        try { octx.filter = 'brightness(1.9) contrast(1.15) saturate(1.25)'; } catch (e) {}
+        octx.drawImage(img, (cols - dw) / 2, (rows - dh) / 2, dw, dh);
+        try { octx.filter = 'none'; } catch (e) {}
+        const px = octx.getImageData(0, 0, cols, rows).data;
+
+        // собираем все ячейки
+        const cells = [];
+        for (let y = 0; y < rows; y++) {
+          for (let x = 0; x < cols; x++) {
+            const i = (y * cols + x) * 4;
+            const r = px[i], g = px[i + 1], b = px[i + 2];
+            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+            cells.push({ x, y, r, g, b, lum });
+          }
+        }
+        // перемешиваем порядок появления
+        for (let i = cells.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [cells[i], cells[j]] = [cells[j], cells[i]];
+        }
+
+        portraitCtx.textAlign = 'center';
+        portraitCtx.textBaseline = 'middle';
+
+        const drawCell = c => {
+          const w = words[(c.x * 7 + c.y * 13) % 3];
+          const t = Math.pow(c.lum / 255, 0.65); // гамма — раскрыть тени
+          let r = c.r, g = c.g, b = c.b;
+          const sat = 1 + 0.7 * t; // насыщенность ярких участков
+          r = Math.min(255, Math.max(0, (r - c.lum) * sat + c.lum + 50 * t));
+          g = Math.min(255, Math.max(0, (g - c.lum) * sat + c.lum + 50 * t));
+          b = Math.min(255, Math.max(0, (b - c.lum) * sat + c.lum + 55 * t));
+          portraitCtx.font = '700 ' + (8 + t * 8).toFixed(1) + 'px Manrope, sans-serif';
+          portraitCtx.fillStyle = 'rgba(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ',' + (0.28 + 0.72 * t).toFixed(2) + ')';
+          portraitCtx.fillText(w, c.x * cellW + cellW / 2, c.y * cellH + cellH / 2);
+        };
+
+        const revealStart = performance.now() + 2300; // после отлёта слов
+        const revealDur = 3400;
+        let revealed = 0;
+        function reveal(now) {
+          if (now >= revealStart) {
+            const p = Math.min(1, (now - revealStart) / revealDur);
+            const target = Math.floor(cells.length * p);
+            while (revealed < target) drawCell(cells[revealed++]);
+            if (p >= 1) {
+              finalCaption.classList.add('show');
+              finalActions.classList.add('show');
+              return;
+            }
+          }
+          requestAnimationFrame(reveal);
+        }
+        setTimeout(() => portraitCanvas.classList.add('show'), 1900);
+        requestAnimationFrame(reveal);
+      };
     }
     document.getElementById('unlock-form').addEventListener('submit', event => {
       event.preventDefault();
@@ -178,6 +293,13 @@
     });
     document.getElementById('restart').addEventListener('click', () => {
       document.getElementById('password').value = '';
+      finalPlayed = false;
+      zoomEl.classList.remove('play');
+      portraitCanvas.classList.remove('show');
+      finalCaption.classList.remove('show');
+      finalActions.classList.remove('show');
+      portraitCtx.setTransform(1, 0, 0, 1, 0, 0);
+      portraitCtx.clearRect(0, 0, portraitCanvas.width, portraitCanvas.height);
       showScreen('screen-lock');
     });
   </script>
